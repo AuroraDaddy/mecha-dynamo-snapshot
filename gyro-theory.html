@@ -1,0 +1,244 @@
+<title>자이로 시뮬레이터 — 이론·시뮬레이션·실제 해설</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121724; --panel2:#0e1320; --line:#26304a;
+    --ink:#e7ecf5; --dim:#9aa6bd; --th:#6cc0ff; --sim:#5ee08a; --gap:#ffb14a; --real:#c79bff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(180deg,#0b0e14,#0c1020 60%,#0b0e14);
+    color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:28px 18px 70px}
+  header{padding:18px 0 6px}
+  h1{font-size:clamp(22px,4.2vw,32px);margin:0 0 6px;letter-spacing:-.4px}
+  .sub{color:var(--dim);font-size:15px;max-width:70ch}
+  h2{font-size:clamp(18px,3vw,22px);margin:38px 0 4px;letter-spacing:-.3px}
+  .h2line{height:2px;background:linear-gradient(90deg,var(--th),transparent);border:0;margin:6px 0 16px}
+  p{margin:.5em 0}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .eq{display:inline-block;background:#0a0f1c;border:1px solid var(--line);border-radius:7px;
+    padding:2px 8px;margin:2px 0;color:#cfe0ff;font-family:ui-monospace,Menlo,monospace;font-size:14px}
+  .lead{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:14px 0}
+  .pill{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.3px;padding:2px 9px;border-radius:999px;margin-right:6px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .princ{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 15px}
+  .princ h3{margin:.1em 0 .35em;font-size:16px}
+  .princ .k{color:var(--th);font-weight:700}
+  /* scene cards */
+  .scene{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:0;margin:14px 0;overflow:hidden}
+  .scene .top{display:flex;align-items:center;gap:10px;padding:13px 16px;background:var(--panel2);border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .scene .num{font-family:ui-monospace,Menlo,monospace;font-weight:800;color:#0b0e14;background:var(--th);
+    width:26px;height:26px;border-radius:7px;display:grid;place-items:center;font-size:14px;flex:0 0 auto}
+  .scene .ttl{font-weight:700;font-size:16px}
+  .scene .key{margin-left:auto;color:var(--dim);font-size:12.5px;font-family:ui-monospace,Menlo,monospace}
+  .rows{padding:6px 16px 14px}
+  .row{display:grid;grid-template-columns:96px 1fr;gap:12px;padding:9px 0;border-bottom:1px dashed #1d2740}
+  .row:last-child{border-bottom:0}
+  .row .lab{font-size:12px;font-weight:800;letter-spacing:.3px;padding-top:2px}
+  .lab.t{color:var(--th)} .lab.s{color:var(--sim)} .lab.g{color:var(--gap)} .lab.r{color:var(--real)}
+  .row .val{font-size:14.5px;color:#dde5f3}
+  .row .val b{color:#fff}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  .tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin:12px 0}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #1c2540;vertical-align:top;white-space:nowrap}
+  td.w{white-space:normal;min-width:240px}
+  th{background:var(--panel2);color:var(--dim);font-weight:700;font-size:12.5px;letter-spacing:.3px}
+  tr:last-child td{border-bottom:0}
+  .exp{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--real);border-radius:12px;padding:12px 15px;margin:10px 0}
+  .exp b{color:#fff}
+  .tag{font-size:11.5px;color:var(--dim)}
+  .foot{color:var(--dim);font-size:13px;margin-top:30px;border-top:1px solid var(--line);padding-top:14px}
+  @media(max-width:620px){.grid3{grid-template-columns:1fr}.row{grid-template-columns:64px 1fr}}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>🌀 자이로 시뮬레이터 — 이론·시뮬레이션·실제</h1>
+  <div class="sub">시뮬레이터가 보여주는 현상의 <b>이론</b>, 시뮬레이션이 무엇을 <b>단순화</b>했는지(이론·실제와의 차이를 어떻게 읽을지), 그리고 <b>실생활·공학</b>에서 직접 확인하는 방법을 한 장에 정리.</div>
+</header>
+
+<div class="lead">
+  <span class="pill" style="background:#163049;color:var(--th)">한 줄 요약</span>
+  <b>gyro_sim</b>(팽이)은 운동방정식을 직접 적분해 <b>정량적으로 정확</b>합니다. <b>vehicles_sim</b>의 차량 8장면은
+  <b>정성적 시연</b>입니다 — "어느 방향으로, 어떤 조건에서, 왜" 효과가 나타나는지는 실제와 일치하지만,
+  화면의 구체적인 각도·시간 숫자는 예측이 아니라 튜닝된 시연 값으로 읽으세요.
+</div>
+
+<h2>1. 핵심 원리 세 가지 (이론)</h2><hr class="h2line">
+<div class="grid3">
+  <div class="princ">
+    <h3>① 공간 강성 <span class="tag">rigidity</span></h3>
+    <p>각운동량 <span class="eq">L = I·ω</span> 는 외부 토크가 없으면 보존 → 회전축이 공간에 대해 방향을 유지.
+    중요한 건 <span class="k">크기 |L|에만 의존</span>(방향 무관). 그래서 회전을 빠르게 할수록 더 단단합니다.</p>
+  </div>
+  <div class="princ">
+    <h3>② 세차 <span class="tag">precession</span></h3>
+    <p>토크를 가하면 <span class="eq">τ = dL/dt</span> 라서 축이 토크 방향이 아니라 <span class="k">수직</span>으로 돕니다.
+    정상 세차율 <span class="eq">Ω = τ /(I·ω)</span>. <b>방향은 회전 부호로 뒤집힘</b>, 빠를수록 세차는 느려집니다.</p>
+  </div>
+  <div class="princ">
+    <h3>③ 장동 <span class="tag">nutation</span></h3>
+    <p>세차에 겹친 빠른 떨림. 주파수 <span class="eq">f ≈ I₃ω₃ / I₁</span>. 마찰로 차차 잦아들며 매끄러운 세차로 수렴합니다.</p>
+  </div>
+</div>
+<p style="margin-top:12px">운동하는 물체에서 핵심은 <b>자이로 반작용(세차) 토크</b>: 몸체를 각속도 <span class="eq">ω<sub>입력</sub></span>(예: 조향)로 돌리면
+<span class="eq">τ = ω<sub>입력</sub> × L</span> 의 토크가 <b>수직 축</b>으로 생겨 물체를 편향시킵니다. <span class="k">L의 부호(회전 방향)를 뒤집으면 편향 방향이 정확히 반대</span>가 됩니다 — 시뮬에서 패널 REV로 확인하는 바로 그 효과입니다.</p>
+
+<h2>2. 이론 ↔ 시뮬레이션 ↔ 실제 — 차이를 읽는 법</h2><hr class="h2line">
+<div class="tblwrap">
+<table>
+  <tr><th>구분</th><th>무엇을 한다</th><th class="w">정확도 / 어떻게 해석</th></tr>
+  <tr>
+    <td><b>이론</b></td><td>라그랑주·오일러 방정식, τ=ω×L</td>
+    <td class="w">이상적 강체. 방향·크기 의존성·실패모드의 <b>근본 원인</b>을 줌.</td></tr>
+  <tr>
+    <td><b>gyro_sim</b><br><span class="tag">팽이</span></td><td>무거운 대칭팽이 라그랑주식을 RK4로 직접 적분</td>
+    <td class="w"><b>정량적 정확.</b> 평균 세차율이 <span class="eq">Mgl/(I₃ω₃)</span>와 일치, 역회전 시 세차 부호 반전 — 실측 가능한 수준.</td></tr>
+  <tr>
+    <td><b>vehicles_sim</b><br><span class="tag">차량 8장면</span></td><td>PD 제어 루프 + 세차 결합항으로 핵심만 모델링</td>
+    <td class="w"><b>정성적 시연.</b> 아래 단순화 때문에 숫자는 예측이 아니라 시연용. 방향/부호/조건 의존성은 옳음.</td></tr>
+</table>
+</div>
+<p style="margin-top:10px;color:var(--dim);font-size:13.5px">차량 장면이 단순화한 것(=이론·실제와의 차이를 만드는 부분):</p>
+<ul style="margin-top:4px;color:#dde5f3;font-size:14px">
+  <li>강체 오일러 방정식 대신 <b>PD 제어 루프</b>로 안정화를 근사.</li>
+  <li><span class="eq">authority = 0.45·size²·|spin|</span> 은 자이로 토크 용량을 <b>뭉뚱그린 파라미터</b>(실제 N·m 값이 아님).</li>
+  <li>세차 결합은 <span class="eq">k·L<sub>부호</sub>·(회전율)</span> — 부호·크기 의존성은 정확하나 계수 k는 튜닝값.</li>
+  <li><b>트레드밀</b>(위치 고정 + 배경 스크롤)로 6자유도 궤적을 근사.</li>
+  <li>공기역학·타이어·구조 변형·센서 잡음/바이어스·액추에이터 동특성 생략.</li>
+</ul>
+
+<h2>3. 장면별: 이론 / 시뮬 / 차이 / 실사용·확인</h2><hr class="h2line">
+
+<div class="scene">
+  <div class="top"><div class="num" style="background:#ffd24a">0</div><div class="ttl">자이로 원리 (무거운 대칭팽이)</div><div class="key">gyro_sim.py</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val">한 점이 고정된 팽이. 중력 토크가 세차를 만들어 <b>쓰러지지 않고</b> 돈다. <span class="eq">Ω = Mgl/(I₃ω₃)</span>, 장동 <span class="eq">f≈I₃ω₃/I₁</span>.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">라그랑주식을 직접 적분 → 세차·장동이 실제대로. 회전을 끄면 그냥 쓰러지고, <b>역회전 주면 세차가 정확히 반대</b>로.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">거의 없음(가장 충실). 이상화: 점 지지, 마찰을 감쇠항 하나로.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val"><b>자전거 바퀴+끈</b> 고전 실험, 팽이, 자이로 장난감. 끈에 매달면 떨어지지 않고 도는 게 세차. 회전을 반대로 주면 세차도 반대 — 시뮬과 동일.</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num">1</div><div class="ttl">기차 — 모노레일 자이로 안정기</div><div class="key">키 1</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val">레일 위 <b>역진자</b> + 자이로 강성으로 직립. 곡선에선 원심력 <span class="eq">v²/R</span> 이 바깥으로 전도.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">곡선에서 원심 전도 vs 자이로 복원이 겨루고, 진행방향 회전(세차)으로 안/밖으로 기욺. 자이로 끄면 쓰러짐.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">실제 Brennan은 <b>능동 세차 서보</b>(자이로를 강제로 세차시켜 복원토크 생성), 시뮬은 PD 근사. 레일·서스펜션 생략.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val"><b>Brennan·Schilovsky 모노레일</b>(1900–10년대, 역회전 2개). 전력·복잡성 때문에 상용화 실패 → 역사 영상으로 확인. 현대엔 거의 안 씀.</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num">2</div><div class="ttl">비행기 — 조향→피치 세차 + 자세 유지</div><div class="key">키 2</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val">요잉(선회) 시 <span class="eq">τ = ω<sub>yaw</sub> × L</span> 로 <b>피치가 유발</b>되는 자이로 세차(단발 프로펠러기의 P-팩터/세차). 자세계=수직 자이로.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">조향하면 기수가 위/아래로 — <b>자이로 방향을 뒤집으면 상승↔하강</b>이 반대. 무자이로기는 그냥 선회만.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">실제 자이로원은 <b>프로펠러·엔진 회전</b>이고 공력 모멘트가 지배적. 시뮬은 탑재 자이로로 단순화, 공력 생략.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val">고출력 단발기 이착륙 시 자이로 세차(러더로 보정). 옛 <b>인공수평의·선회계</b>(자이로 계기). 비행 시뮬레이터로 체감.</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num">3</div><div class="ttl">로켓 — 추력벡터제어(TVC) + 관성유도</div><div class="key">키 3</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val">추력 위 역진자. <b>짐벌 추력(TVC)</b>으로 자세 제어, 자이로(기준)로 자세 측정.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">자이로 유도 TVC가 수직 유지/조준. 자이로 없으면 텀블. 조준 방향이 자이로 부호에 의존.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">실제는 <b>IMU(스트랩다운)+컴퓨터</b>가 기준, 노즐 짐벌은 유압/전동. 시뮬은 단일 자이로 기준으로 단순화.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val"><b>V-2</b>(3 자이로 유도), 현대 발사체(Falcon 9 등 IMU+TVC). 발사 영상에서 <b>노즐이 까딱이는</b> 짐벌을 확인.</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num">4</div><div class="ttl">오토바이 — 바퀴 자이로 + 능동 CMG</div><div class="key">키 4</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val">바퀴 자이로(L∝속도)와 <b>트레일(조향 기하)</b>로 자가안정. 카운터스테어. 자가균형엔 능동 CMG.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">속도↑=안정, 조향→기울임, <b>CMG 회전방향이 선회 방향을 결정</b>(뒤집으면 반대로 코너링).</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">실제 자전거 안정은 <b>트레일·질량분포가 주</b>역, 바퀴 자이로는 보조(Kooijman 등 2011 — 자이로 없이도 안정 가능). 시뮬은 자이로 효과를 강조.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val">빠르게 달리며 핸들 놓기(자가안정). <b>Lit Motors C-1</b>·<b>Murata 로봇</b>(CMG), Honda Riding Assist(스티어링). <b>회전 바퀴를 손에 들고 기울여</b> 세차 반작용 느끼기.</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num">5</div><div class="ttl">인공위성 — 리액션 휠 자세제어</div><div class="key">키 5</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val">우주엔 복원력 없음 → 미세 외란도 누적. <b>각운동량 보존</b>: 휠을 한쪽으로 가속하면 위성은 반대로 회전. 외란 누적→<b>휠 포화</b>→추력기로 디샛.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">휠로 지향·유지, H 누적 표시. 휠 없으면 표류. 회전방향이 슬루 방향을 결정.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">실제는 1축 비교가 아니라 <b>3~4개로 3축</b> 제어(장면 7). 마찰·포화 디테일은 단순화.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val"><b>허블·케플러·큐브샛</b>의 리액션 휠. <b>회전의자에 앉아 돌아가는 바퀴를 기울이면 의자가 도는</b> 실험(=각운동량 보존, 리액션휠 원리).</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num" style="background:#5ee08a">6</div><div class="ttl">트윈 역회전 자이로 — 왜 2개인가</div><div class="key">키 6</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val"><b>단일</b> 자이로는 순 각운동량 H≠0 → 차량이 돌 때 원치 않는 세차·방향 바이어스 + 짐벌 포화. <b>역회전 쌍</b>은 순 H=0, 시저드 짐벌로 횡축 토크가 상쇄되어 <b>순수 단일축(롤) 토크</b>.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">단일은 짐벌 60° 포화 후 쓰러짐, 트윈은 깔끔하게 코너링. 역회전 주면 <b>단일만</b> 방향이 뒤집히고 트윈은 불변.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">실제는 능동 세차 서보가 핵심, 시뮬은 포화·바이어스 모델로 "왜 둘이 필요한가"만 부각.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val"><b>Brennan 모노레일</b>·<b>Lit Motors</b>·<b>Murata</b>(역회전 쌍), 선박 <b>Seakeeper</b>(능동 세차). 바퀴 2개를 역회전으로 들면 기울임 반작용이 서로 상쇄됨을 체감.</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num" style="background:#5ee08a">7</div><div class="ttl">CMG/리액션휠 클러스터 — 3축 + 중복성</div><div class="key">키 7 · F=휠 고장</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val">3축 제어엔 <b>최소 3개</b>(축당 1), 보통 <b>4개</b>(중복성 + 특이점 회피). 토크 분배 = <b>의사역행렬</b> <span class="eq">w = W⁺·T<sub>c</sub></span>. 4개면 1개 고장에도 3축 유지.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">단일 휠은 비제어 축이 텀블, 4-휠 피라미드는 3축 유지. <b>F로 1개 고장시켜도</b> 남은 3개로 제어(중복성), pinv 잔차≈0.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">시뮬은 리액션휠로 단순화 — 실제 <b>CMG의 특이점 회피 스티어링</b>(짐벌 토크가 한 평면에 갇히는 문제)은 미모델.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val"><b>ISS의 CMG 4개</b>(2002년 1개 고장에도 운용 — 바로 이 중복성!). <b>케플러</b>는 리액션휠 4개 중 2개 고장→정밀지향 상실(중복성의 한계). NASA 자료로 확인.</div></div>
+  </div>
+</div>
+
+<div class="scene">
+  <div class="top"><div class="num" style="background:#5ee08a">8</div><div class="ttl">3축 관성 플랫폼 — 짐벌 안정 플랫폼</div><div class="key">키 8</div></div>
+  <div class="rows">
+    <div class="row"><div class="lab t">이론</div><div class="val"><b>3 짐벌 + 3 직교 자이로</b>로 내부 플랫폼을 관성공간에 고정. 두 짐벌축이 정렬되면 한 자유도를 잃는 <b>짐벌락(gimbal lock)</b>.</div></div>
+    <div class="row"><div class="lab s">시뮬</div><div class="val">베이스를 텀블시켜도 내부 플랫폼은 고정, 자이로 끄면 표류. 짐벌락 근접도 감지.</div></div>
+    <div class="row"><div class="lab g">차이</div><div class="val">실제 아폴로·미사일은 <b>기계식 짐벌 플랫폼</b>, 현대는 <b>스트랩다운</b>(고정 센서 + 계산으로 가상 안정화). 시뮬은 고전 기계식.</div></div>
+    <div class="row"><div class="lab r">실사용·확인</div><div class="val"><b>아폴로 IMU</b>(짐벌락 85° 일화), 미사일 INS, <b>카메라 짐벌</b>(DJI/Steadicam — 지금은 IMU+모터). <b>휴대폰의 3축 자이로 센서 앱</b>으로 "왜 3개가 필요한지" 직접 읽기.</div></div>
+  </div>
+</div>
+
+<h2>4. 직접 확인하는 방법 (hands-on + 공학 사례)</h2><hr class="h2line">
+<div class="exp">
+  <b>① 자전거 바퀴 + 끈</b> — 한쪽 축만 끈에 매달면 떨어지지 않고 수평으로 <b>세차</b>한다. 회전을 반대로 주면 세차 방향도 반대, 빠르게 돌릴수록 세차는 느려진다. → 장면 0·2·4의 핵심.
+</div>
+<div class="exp">
+  <b>② 회전의자 + 돌아가는 바퀴</b> — 의자에 앉아 돌아가는 바퀴를 들고 축을 기울이면 의자가 돌아간다(각운동량 보존). → 장면 5·6·7 리액션휠/CMG의 원리.
+</div>
+<div class="exp">
+  <b>③ 휴대폰 자이로 센서 앱</b> — 3축 MEMS 자이로의 roll/pitch/yaw 회전율을 실시간으로 본다. 한 축만으로는 임의 회전을 못 잡는 것을 확인. → 장면 7·8이 "왜 3개"인지.
+</div>
+<div class="exp">
+  <b>④ 팽이/자이로 토이</b> — 강성(안 쓰러짐)·세차(축이 천천히 돔)·장동(떨림)을 모두 눈으로. → 장면 0.
+</div>
+
+<div class="tblwrap">
+<table>
+  <tr><th>현상/장면</th><th>실제 시스템</th><th class="w">관찰·검증 포인트</th></tr>
+  <tr><td>세차</td><td>자전거 바퀴, 팽이, 단발기</td><td class="w">회전 반대→세차 반대 / 빠를수록 느린 세차</td></tr>
+  <tr><td>모노레일 안정기</td><td>Brennan·Schilovsky 모노레일</td><td class="w">역회전 2개, 능동 세차 서보 (역사 영상)</td></tr>
+  <tr><td>TVC·관성유도</td><td>V-2, Falcon 9</td><td class="w">발사 영상의 짐벌 노즐, IMU 기반 유도</td></tr>
+  <tr><td>자가균형 이륜</td><td>Lit Motors C-1, Murata, Honda</td><td class="w">CMG vs 스티어링 방식 차이</td></tr>
+  <tr><td>리액션휠 3축</td><td>허블, 케플러, 큐브샛</td><td class="w">케플러: 휠 2개 고장→정밀지향 상실(중복성 한계)</td></tr>
+  <tr><td>CMG 클러스터 + 중복성</td><td>ISS CMG 4개</td><td class="w">2002년 1개 고장에도 운용 — 장면 7의 F키 시연과 동일</td></tr>
+  <tr><td>관성 플랫폼·짐벌락</td><td>아폴로 IMU, 미사일 INS, 카메라 짐벌</td><td class="w">짐벌락(축 정렬), 현대는 스트랩다운으로 회피</td></tr>
+</table>
+</div>
+
+<h2>5. 결론 — 시뮬레이션을 어떻게 읽을까</h2><hr class="h2line">
+<div class="lead">
+  <p style="margin-top:0"><span class="pill" style="background:#163a26;color:var(--sim)">읽는 법</span>
+  시뮬은 <b>인과·방향·조건</b>을 정확히 보여줍니다: "자이로 방향을 뒤집으면 왜, 어느 쪽으로 운동이 바뀌는가", "속도가 빠를수록 왜 더 안정한가", "휠 하나가 고장 나면 왜 여전히/혹은 더는 제어가 되는가".</p>
+  <p><span class="pill" style="background:#3a2c14;color:var(--gap)">주의</span>
+  차량 장면의 <b>구체적 숫자(각도·시간·authority 값)는 정량 예측이 아니라 시연 파라미터</b>입니다. 정량까지 신뢰할 곳은 운동방정식을 직접 적분하는 <b>gyro_sim</b>(팽이)입니다.</p>
+  <p style="margin-bottom:0"><span class="pill" style="background:#2a1f3d;color:var(--real)">확장</span>
+  더 실제에 가깝게 하려면: 강체 오일러 방정식으로 교체, 실제 관성·토크 단위(N·m, kg·m²) 사용, 공력/타이어 모델 추가, CMG 특이점 스티어링·휠 포화·센서 잡음 도입 — 원하시면 특정 장면을 이 방향으로 고도화해 드릴 수 있습니다.</p>
+</div>
+
+<div class="foot">
+  대상 코드: <span class="mono">gyro_sim.py</span>(자이로 원리·정량) · <span class="mono">vehicles_sim.py</span>(1~8 차량 장면·정성) ·
+  <span class="mono">scene_twingyro / scene_cmgcluster / scene_imuplatform</span>(다중 자이로 모델 6·7·8).
+</div>
+</div>

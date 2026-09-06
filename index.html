@@ -1,0 +1,71 @@
+<!doctype html><html lang=ko><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name=apple-mobile-web-app-capable content=yes><link rel=manifest href=./manifest.json>
+<title>메카 다이너모 — 스냅샷</title><style>
+:root{--bg:#0b0c10;--card:#131722;--bd:#262c3a;--fg:#e3e8f1;--dim:#9098a8;
+--gold:#fbbf24;--cy:#22d3ee;--g:#4ade80;--r:#f87171;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0 auto;background:var(--bg);color:var(--fg);font-family:-apple-system,"Apple SD Gothic Neo",sans-serif;
+padding:calc(env(safe-area-inset-top)+14px) 14px calc(env(safe-area-inset-bottom)+28px);max-width:720px}
+h1{font-size:18px;margin:0 0 3px;letter-spacing:-.02em}
+h2{font-size:14px;margin:0 0 8px;color:var(--cy)}
+.sub{font-size:11.5px;color:var(--dim);font-family:var(--mono);margin-bottom:6px}
+.warn{font-size:11px;color:var(--gold);font-family:var(--mono);margin-bottom:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.pass{font-size:22px;font-weight:800;font-family:var(--mono);color:var(--g)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+td{padding:4px 2px;border-bottom:1px solid var(--bd)}
+td:last-child{text-align:right;font-family:var(--mono);color:var(--g)}
+ul{margin:0;padding-left:18px;font-size:13px;line-height:1.65}
+li b{color:var(--gold)}
+img{width:100%;margin-top:10px;border-radius:9px;border:1px solid var(--bd)}
+.cap{font-size:11px;color:var(--dim);font-family:var(--mono);margin-top:3px}
+a{color:var(--cy)}
+.doc{display:block;padding:10px 12px;margin-top:8px;background:#1a2130;border:1px solid var(--bd);
+border-radius:10px;text-decoration:none;font-size:13.5px;font-weight:600}
+.doc span{float:right;color:var(--dim);font-size:11px;font-family:var(--mono)}
+footer{color:#6b7384;font-size:11px;font-family:var(--mono);text-align:center;margin-top:22px}
+</style></head><body>
+<h1>🔧 메카 다이너모 — 스냅샷</h1>
+<div class=sub id=meta>로딩…</div>
+<div class=warn>⚠ 읽기전용 스냅샷(항상 켜진 고정주소) · 소스 코드는 비공개 리포에 별도 보관</div>
+
+<div class=card>
+<h2>검증 현황</h2>
+<div class=pass id=passline>—</div>
+<table id=domains></table>
+</div>
+
+<div class=card>
+<h2>최근 기능</h2>
+<ul id=feats></ul>
+</div>
+
+<div class=card>
+<h2>스크린샷</h2>
+<img src=shots/road_axes.png alt="도로 주행 + 좌표축"><div class=cap>도로 주행 + 물체별 로컬 좌표축 triad(X/Y/Z)</div>
+<img src=shots/roundabout.png alt="로터리"><div class=cap>로터리(원형 교차로) — 순환·팔 진출(리본 재기준화)</div>
+<img src=shots/aero.png alt="에어로 CFD"><div class=cap>외부 공기역학 유동(휠 형상 연동 스트림라인)</div>
+<img src=shots/studio.png alt="엔진 스튜디오"><div class=cap>엔진 스튜디오(파라미터·그래프·P-V·부품 토글)</div>
+</div>
+
+<div class=card>
+<h2>문서 (PDF)</h2>
+<a class=doc href="docs/00_교재_메카물리원리.pdf">📕 교재 — 메카 물리 원리<span>PDF</span></a>
+<a class=doc href="docs/01_설계스팩_DESIGN_SPEC.pdf">📘 설계 스팩<span>PDF</span></a>
+<a class=doc href="docs/02_검증스팩_VERIFICATION_SPEC.pdf">📗 검증 스팩<span>PDF</span></a>
+<a class=doc href="docs/03_체크리스트_CHECKLIST.pdf">📋 체크리스트<span>PDF</span></a>
+<a class=doc href="gyro-theory.html">🌀 자이로 이론 (웹)<span>HTML</span></a>
+</div>
+
+<footer id=foot></footer>
+<script>
+fetch('summary.json?'+Date.now()).then(r=>r.json()).then(s=>{
+  document.getElementById('meta').textContent='갱신 '+s.updated+' · '+s.files+'파일 · '+s.loc;
+  document.getElementById('passline').textContent=s.regression;
+  document.getElementById('domains').innerHTML=s.domains.map(d=>'<tr><td>'+d+'</td><td>PASS</td></tr>').join('');
+  document.getElementById('feats').innerHTML=s.features.map(f=>'<li><b>'+f[0]+'</b> — '+f[1]+'</li>').join('');
+  document.getElementById('foot').textContent='mecha/dynamo snapshot · '+s.updated;
+}).catch(e=>{document.getElementById('meta').textContent='summary.json 로드 실패'});
+</script>
+</body></html>

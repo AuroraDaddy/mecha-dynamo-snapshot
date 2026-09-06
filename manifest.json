@@ -1,0 +1,8 @@
+{
+  "name": "메카 다이너모 스냅샷",
+  "short_name": "다이너모",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b0c10",
+  "theme_color": "#0b0c10"
+}
