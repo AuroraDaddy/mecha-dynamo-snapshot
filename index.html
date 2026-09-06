@@ -30,10 +30,20 @@ footer{color:#6b7384;font-size:11px;font-family:var(--mono);text-align:center;ma
 <div class=sub id=meta>로딩…</div>
 <div class=warn>⚠ 읽기전용 스냅샷(항상 켜진 고정주소) · 소스 코드는 비공개 리포에 별도 보관</div>
 
+<a href="sim.html" style="display:block;text-align:center;background:var(--gold);color:#000;text-decoration:none;
+font-weight:800;padding:14px;border-radius:12px;margin-bottom:14px;font-size:15px">▶ 웹 시뮬레이터 실행 (모바일 구동)</a>
+
 <div class=card>
 <h2>검증 현황</h2>
 <div class=pass id=passline>—</div>
 <table id=domains></table>
+</div>
+
+<div class=card>
+<h2>시뮬 결과 데이터</h2>
+<div id=results style="font-size:12.5px">로딩…</div>
+<h2 style="margin-top:14px">검증대장 이력 (NAS append-only)</h2>
+<table id=hist></table>
 </div>
 
 <div class=card>
@@ -67,5 +77,13 @@ fetch('summary.json?'+Date.now()).then(r=>r.json()).then(s=>{
   document.getElementById('feats').innerHTML=s.features.map(f=>'<li><b>'+f[0]+'</b> — '+f[1]+'</li>').join('');
   document.getElementById('foot').textContent='mecha/dynamo snapshot · '+s.updated;
 }).catch(e=>{document.getElementById('meta').textContent='summary.json 로드 실패'});
+fetch('results.json?'+Date.now()).then(r=>r.json()).then(R=>{
+  document.getElementById('results').innerHTML=Object.entries(R.domains).map(([dom,rows])=>
+    '<div style="color:var(--gold);font-weight:700;margin:10px 0 4px">'+dom+'</div>'+
+    '<table>'+rows.map(r=>'<tr><td>'+r[0]+'</td><td style="color:var(--fg)">'+r[1]+'</td></tr>').join('')+'</table>'
+  ).join('');
+  document.getElementById('hist').innerHTML=R.history.slice().reverse().map(h=>
+    '<tr><td>'+h[0]+'</td><td>'+h[1]+' '+(h[2]==='OK'?'✅':'❌')+'</td></tr>').join('');
+}).catch(e=>{document.getElementById('results').textContent='results.json 로드 실패'});
 </script>
 </body></html>

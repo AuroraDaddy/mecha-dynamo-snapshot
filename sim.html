@@ -1,0 +1,246 @@
+<!doctype html><html lang=ko><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name=apple-mobile-web-app-capable content=yes>
+<title>메카 다이너모 — 웹 시뮬레이터</title><style>
+:root{--bg:#0b0c10;--card:#131722;--bd:#262c3a;--fg:#e3e8f1;--dim:#9098a8;
+--gold:#fbbf24;--cy:#22d3ee;--g:#4ade80;--r:#f87171;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+body{margin:0 auto;background:var(--bg);color:var(--fg);font-family:-apple-system,"Apple SD Gothic Neo",sans-serif;
+padding:calc(env(safe-area-inset-top)+10px) 12px calc(env(safe-area-inset-bottom)+10px);max-width:560px;
+touch-action:manipulation}
+h1{font-size:16px;margin:0 0 2px}
+.sub{font-size:10.5px;color:var(--dim);font-family:var(--mono);margin-bottom:10px}
+.sub a{color:var(--cy)}
+canvas{width:100%;border-radius:12px;border:1px solid var(--bd);background:var(--card);display:block}
+#dash{margin-bottom:8px}
+#curve{margin-bottom:8px}
+.pedals{display:flex;gap:10px;margin-bottom:8px}
+.ped{flex:1;padding:22px 0;border-radius:14px;border:1px solid var(--bd);font-size:16px;font-weight:800;
+text-align:center;color:#000}
+#acc{background:var(--g);flex:2}
+#brk{background:var(--r)}
+.ped:active{filter:brightness(1.25)}
+.rowbtn{display:flex;gap:8px;margin-bottom:8px}
+.tb{flex:1;padding:10px 0;border-radius:10px;border:1px solid var(--bd);background:#1a2130;color:var(--fg);
+font-size:12.5px;font-weight:700;text-align:center}
+.tb.on{background:var(--gold);color:#000}
+details{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+summary{font-size:13px;font-weight:700;color:var(--cy)}
+.pr{display:flex;align-items:center;gap:8px;margin-top:9px;font-size:12px}
+.pr label{width:86px;color:var(--dim)}
+.pr input[type=range]{flex:1}
+.pr select{flex:1;background:#1a2130;color:var(--fg);border:1px solid var(--bd);border-radius:7px;padding:5px}
+.pr b{width:64px;text-align:right;font-family:var(--mono);font-size:11.5px}
+footer{color:#6b7384;font-size:10px;font-family:var(--mono);text-align:center;margin-top:12px}
+</style></head><body>
+<h1>🏎 메카 다이너모 — 웹 시뮬레이터</h1>
+<div class=sub>engine_phys.py 실물리 포팅(0D 사이클·컴프레서맵·Chen-Flynn) · <a href="./">← 스냅샷 홈</a></div>
+<canvas id=dash width=1072 height=430></canvas>
+<canvas id=curve width=1072 height=300></canvas>
+<div class=pedals>
+ <div class=ped id=brk>🛑 브레이크</div>
+ <div class=ped id=acc>⛽ 가속 (누르고 있기)</div>
+</div>
+<div class=rowbtn>
+ <div class=tb id=bSound>🔊 사운드</div>
+ <div class=tb on id=bAuto>자동변속</div>
+ <div class=tb id=bDn>▼ 시프트</div>
+ <div class=tb id=bUp>▲ 시프트</div>
+</div>
+<details><summary>⚙ 엔진 파라미터</summary>
+ <div class=pr><label>기통수</label><select id=cyl><option>3</option><option selected>4</option><option>6</option><option>8</option></select><b id=vDisp></b></div>
+ <div class=pr><label>보어 mm</label><input type=range id=bore min=60 max=104 value=86><b id=vBore></b></div>
+ <div class=pr><label>행정 mm</label><input type=range id=strk min=55 max=110 value=86><b id=vStrk></b></div>
+ <div class=pr><label>압축비</label><input type=range id=cr min=8 max=14 step=0.5 value=10.5><b id=vCr></b></div>
+ <div class=pr><label>캠(고회전)</label><input type=range id=cam min=0 max=100 value=50><b id=vCam></b></div>
+ <div class=pr><label>과급</label><select id=ind><option selected>NA</option><option>Turbo</option><option>Super</option></select>
+  <select id=tsz><option>Small</option><option selected>Med</option><option>Large</option></select></div>
+ <div class=pr><label>부스트 bar</label><input type=range id=boost min=0.3 max=2.2 step=0.1 value=1.0><b id=vBoost></b></div>
+ <div class=pr><label>옥탄</label><input type=range id=oct min=87 max=102 value=95><b id=vOct></b></div>
+ <div class=pr><label>레드라인</label><input type=range id=rl min=5500 max=9000 step=100 value=7200><b id=vRl></b></div>
+</details>
+<footer>1차 원리 물리(임의 배율 없음) · 노킹=Livengood-Wu 프록시 · 차량 1400kg·CdA 0.66·Crr 0.012</footer>
+<script>
+'use strict';
+// ============ engine_phys.py 포팅(가솔린 SI) ============
+const P0=101325,T0=298,RHO0=1.205,LHV=44e6,AFR_S=14.7,R_AIR=287;
+const GAMMA=1.34,CV=R_AIR/(GAMMA-1),TWALL=450,HEAT_SCALE=1.15,COMB_EFF=0.97;
+const cl=(x,a,b)=>x<a?a:(x>b?b:x), ss=x=>{x=cl(x,0,1);return x*x*(3-2*x)};
+const TURBO={Small:{thr:1600,fdes:4200,etap:.74,cap:1.3},Med:{thr:2700,fdes:5800,etap:.76,cap:1.9},Large:{thr:3800,fdes:7400,etap:.78,cap:2.6}};
+function intakeTune(P,rpm){const c=345,L=(350+90)/1000,dur=240+P.cam*80,te=(dur/360)*(60/Math.max(rpm,200)),tw=2*L/c,ph=1.83*tw/Math.max(te,1e-6);
+ return cl(1+0.16*Math.cos(2*Math.PI*(ph-0.5)),0.86,1.18)}
+function ve(P,rpm){const cam=P.cam,rp=3000+cam*5000,vm=0.86+cam*0.12,span=2400+cam*1700,x=(rpm-rp)/span;
+ let v=vm*Math.exp(-0.5*x*x); if(rpm<rp)v*=(1-cam*0.35*(1-rpm/Math.max(rp,1)));
+ v*=intakeTune(P,rpm); v*=1+0.0*(rpm/P.redline-0.5)*2;   // exhaust=Sport(0.0)
+ const thr=0.05+0.95*(P.throttle/100); return Math.max(0.12,Math.min(1.05,v))*thr}
+function compressor(P,rpm){
+ if(P.induction==='NA')return{boost:0,eta:1,state:'',Tchg:T0};
+ const tgt=P.boost;
+ if(P.induction==='Super'){const drive=cl(0.55+0.45*rpm/P.redline,0,1.6),b=Math.min(tgt,tgt*drive),eta=0.62,
+  PR=1+b/1.013,Tchg=T0*(1+(Math.pow(PR,0.286)-1)/eta); return{boost:b,eta,state:'belt',Tchg}}
+ const tb={...TURBO[P.turbo_size]},trim=0.5;
+ tb.fdes*=(0.7+0.6*trim);tb.thr*=(0.8+0.4*trim);tb.cap*=(0.85+0.3*trim);
+ const spool=ss((rpm-tb.thr)/1300), v=ve({...P,induction:'NA'},rpm), fr=(rpm*Math.max(v,0.3))/(tb.fdes*0.9);
+ let cap,st;
+ if(fr<0.35){cap=tgt*0.35;st='surge'}else if(fr<=1.15){cap=tgt;st='on boost'}
+ else{cap=tgt*Math.max(0.15,1-(fr-1.15)/0.7);st='choke'}
+ cap=Math.min(cap,tb.cap); let b=Math.max(0,Math.min(spool*tgt,cap));
+ if(rpm<tb.thr*1.05)st='spooling';
+ const PR=1+b/1.013;
+ let eta=tb.etap*Math.exp(-0.5*Math.pow((fr-1)/0.5,2)-0.5*Math.pow((PR-1.9)/1.3,2));
+ eta=cl(eta,0.45,tb.etap);
+ const Tchg=b>0?T0*(1+(Math.pow(PR,0.286)-1)/Math.max(eta,0.4)):T0;
+ return{boost:b,eta,state:st,Tchg}}
+const optSpark=(rpm,P)=>Math.min(36,8+rpm/360+P.cam*4);
+function effAfr(afr){const d=afr-12.6,sp=d<0?2:3.6;let e=Math.exp(-0.5*Math.pow(d/sp,2));
+ if(afr>17.5)e*=Math.max(0,1-(afr-17.5)/2.5); if(afr<10.5)e*=Math.max(0,1-(10.5-afr)/2.5); return Math.min(1,e)}
+function knockIdx(P,rpm,sp){const c=compressor(P,rpm),bv=c.boost;
+ let ki=(P.cr-9.3)*0.85+Math.max(0,sp-optSpark(rpm,P))*0.10
+  +(P.throttle/100)*0.9-(rpm/9000)*0.9-(P.octane-90)/8;
+ if(P.afr>14.8)ki+=(P.afr-14.8)*0.08; ki+=bv*1.4;
+ if(bv>0)ki+=(c.Tchg-T0)/120*0.4; return ki}
+function effSpark(P,rpm){let sp=optSpark(rpm,P);          // ign_auto=On 고정(노킹 자동 회피)
+ for(let i=0;i<22;i++){if(knockIdx(P,rpm,sp)<=0.97||sp<=5)break;sp-=2} return Math.max(5,sp)}
+function cycle(P,rpm,steps=110){
+ const bore=P.bore/1000,strk=P.strk/1000,Vd=Math.PI/4*bore*bore*strk,CR=P.cr,Vc=Vd/(CR-1),
+  r=strk/2,rod=r*3.6;
+ const Vol=thd=>{const t=thd*Math.PI/180,x=r*(1-Math.cos(t))+rod-Math.sqrt(Math.max(0,rod*rod-Math.pow(r*Math.sin(t),2)));
+  return Vc+Math.PI/4*bore*bore*x};
+ const c=compressor(P,rpm),boost=c.boost,thr=0.06+0.94*P.throttle/100,
+  Pman=P0*(1+boost/1.013)*thr,Tchg=c.Tchg,
+  Tman=boost===0?T0:(T0+(Tchg-T0)*0.28),Pexh=P0*1.13,
+  rho=RHO0*(Pman/P0)*(T0/Tman),air=rho*Vd*ve(P,rpm),afr=P.afr,Spm=2*strk*rpm/60;
+ const Q=(air/AFR_S)*LHV*effAfr(afr)*COMB_EFF,spark=effSpark(P,rpm),soc=360-spark,
+  dur=56+P.cam*26+rpm/600;
+ const xb=thd=>{if(thd<=soc)return 0;const z=(thd-soc)/dur;return z>=1?1:1-Math.exp(-5*z*z)};
+ let V=Vol(180),T=Tman,m=Pman*V/(R_AIR*T),th=180,peakP=Pman,work=0,KI=0,knk=false;
+ for(let i=1;i<=steps;i++){const th2=180+360*i/steps,V2=Vol(th2),dV=V2-V,dth=th2-th;
+  let Pp=m*R_AIR*T/V; const dt=(dth/360)*(60/Math.max(rpm,200)),
+   w=2.28*Spm+(th>soc?0.6:0)*Spm,
+   hc=HEAT_SCALE*3.26*Math.pow(bore,-0.2)*Math.pow(Pp/1000,0.8)*Math.pow(T,-0.55)*Math.pow(Math.max(w,1),0.8),
+   xp=(V-Vc)/(Math.PI/4*bore*bore),Aw=Math.PI*bore*bore/2+Math.PI*bore*xp,
+   dQl=hc*Aw*(T-TWALL)*dt,dQ=Q*(xb(th2)-xb(th));
+  T+=(dQ-dQl-Pp*dV)/(m*CV); V=V2; th=th2; Pp=m*R_AIR*T/V; peakP=Math.max(peakP,Pp); work+=Pp*dV;
+  if(xb(th)<0.92&&th>200){const Tu=Tman*Math.pow(Pp/Pman,(GAMMA-1)/GAMMA),
+   tau=1e-4*Math.pow(Pp/30e5,-1.7)*Math.exp(3800/Tu)*Math.exp((P.octane-90)*0.13);
+   KI+=dt/Math.max(tau,1e-6); if(KI>=1)knk=true}}
+ const pump=(Pman-Pexh)*Vd,imep=work/Vd/1e5+pump/Vd/1e5;
+ return{imep,peakP:peakP/1e5,knocking:knk,boost,state:c.state,Tchg}}
+function torqueComp(P,rpm){const bore=P.bore/1000,strk=P.strk/1000,Vd=Math.PI/4*bore*bore*strk*P.cyl,
+  cy=cycle(P,rpm),Wi=cy.imep*1e5*Vd,Ti=Wi/(4*Math.PI),
+  Spm=2*strk*rpm/60,fmep=(0.30+0.004*cy.peakP+0.025*Spm+0.0009*Spm*Spm)*1e5,
+  Tf=fmep*Vd/(4*Math.PI),om=rpm*2*Math.PI/60;
+ let Tpar=0;
+ if(P.induction==='Super'){const b=compressor(P,rpm).boost;Tpar=b*(Vd*1000)*(rpm/1000)*0.55*1000/Math.max(om,1)}
+ return{Ti,Tf,Tpar,om,cy}}
+function driveTorque(P,rpm){const t=torqueComp(P,rpm);return{tq:t.Ti-t.Tf-t.Tpar,cy:t.cy}}
+const gearRatio=(P,g)=>{const n=P.gears,f=3.45,t=0.72;return g<1?1:f*Math.pow(t/f,(Math.min(g,n)-1)/(n-1))};
+// ============ 차량 종방향 + 상태 ============
+const V={rpm:900,v:0,gear:1,thr:0,brk:0,auto:true,knock:false,boost:0,state:'',shift:0};
+const CAR={m:1400,CdA:0.66,Crr:0.012,fd:3.7,td:0.63,eff:0.90,idle:900,Ie:0.25};
+function ENG(){return{cyl:+el.cyl.value,bore:+el.bore.value,strk:+el.strk.value,cr:+el.cr.value,
+ cam:el.cam.value/100,throttle:V.thr*100,afr:12.8,octane:+el.oct.value,redline:+el.rl.value,
+ induction:el.ind.value,boost:+el.boost.value,turbo_size:el.tsz.value,gears:6}}
+let CURVE=[],CVMAX={tq:1,kw:1};
+function recurve(){const P={...ENG(),throttle:100};CURVE=[];
+ for(let i=0;i<=44;i++){const rpm=800+(P.redline-800)*i/44,d=driveTorque(P,rpm),
+  tq=Math.max(0,d.tq),kw=tq*rpm*2*Math.PI/60/1000;CURVE.push([rpm,tq,kw,d.cy.knocking])}
+ CVMAX.tq=Math.max(...CURVE.map(c=>c[1]),1);CVMAX.kw=Math.max(...CURVE.map(c=>c[2]),1);
+ const disp=Math.PI/4*Math.pow(+el.bore.value/10,2)*(+el.strk.value/10)*(+el.cyl.value)/1000;
+ el.vDisp.textContent=disp.toFixed(1)+'L'}
+function step(dt){const P=ENG(),red=P.redline;
+ // 자동변속
+ if(V.shift>0)V.shift-=dt;
+ if(V.auto&&V.shift<=0){
+  if(V.rpm>red*0.94&&V.gear<P.gears){V.gear++;V.shift=0.35}
+  else if(V.rpm<1500&&V.gear>1&&V.thr>0.2){V.gear--;V.shift=0.35}}
+ const total=gearRatio(P,V.gear)*CAR.fd,
+  wheelRpm=V.v/3.6/(Math.PI*CAR.td)*60*total;
+ // 엔진 토크(변속 중 컷)
+ const d=driveTorque(P,Math.max(V.rpm,800)),tq=V.shift>0?0:d.tq;
+ V.knock=d.cy.knocking;V.boost=d.cy.boost;V.state=d.cy.state;
+ // 발진 클러치(저속 슬립) / 주행 직결
+ const launch=V.v<8;
+ if(launch){const target=CAR.idle+(red*0.35)*V.thr,
+   slip=cl((target-V.rpm)/500,-1,1);
+  V.rpm+=(tq/CAR.Ie*0.10*V.thr-(V.rpm-target)*3)*dt;
+  const Fcl=cl(tq,0,9999)*total*CAR.eff/(CAR.td/2)*cl(V.thr*1.6,0,1);
+  applyF(Fcl,dt)}
+ else{V.rpm=Math.max(CAR.idle,wheelRpm);
+  const F=tq*total*CAR.eff/(CAR.td/2);applyF(F,dt)}
+ V.rpm=cl(V.rpm,CAR.idle*0.9,red);
+ function applyF(F,dt){const drag=0.5*1.205*CAR.CdA*Math.pow(V.v/3.6,2),
+   rr=V.v>0.5?CAR.Crr*CAR.m*9.81:0,Fb=V.brk*9000;
+  let a=(F-drag-rr-Fb)/CAR.m; V.v+=a*3.6*dt; if(V.v<0)V.v=0}}
+// ============ 렌더 ============
+const el={}; ['cyl','bore','strk','cr','cam','ind','tsz','boost','oct','rl','vDisp','vBore','vStrk','vCr','vCam','vBoost','vOct','vRl'].forEach(id=>el[id]=document.getElementById(id));
+const dash=document.getElementById('dash'),dc=dash.getContext('2d'),
+ cur=document.getElementById('curve'),cc=cur.getContext('2d');
+function needle(x,y,R,frac,col){const a=Math.PI*0.75+frac*Math.PI*1.5;
+ dc.strokeStyle=col;dc.lineWidth=7;dc.beginPath();dc.moveTo(x,y);
+ dc.lineTo(x+R*Math.cos(a),y+R*Math.sin(a));dc.stroke()}
+function gauge(x,y,R,frac,max,unit,val,col,red){
+ dc.strokeStyle='#262c3a';dc.lineWidth=13;dc.beginPath();dc.arc(x,y,R,Math.PI*0.75,Math.PI*2.25);dc.stroke();
+ if(red){dc.strokeStyle='#f8717155';dc.beginPath();dc.arc(x,y,R,Math.PI*0.75+red*Math.PI*1.5,Math.PI*2.25);dc.stroke()}
+ dc.strokeStyle=col;dc.beginPath();dc.arc(x,y,R,Math.PI*0.75,Math.PI*0.75+cl(frac,0,1)*Math.PI*1.5);dc.stroke();
+ needle(x,y,R-16,cl(frac,0,1),'#e3e8f1');
+ dc.fillStyle='#e3e8f1';dc.font='800 44px ui-monospace';dc.textAlign='center';
+ dc.fillText(val,x,y+R*0.62);
+ dc.fillStyle='#9098a8';dc.font='600 20px -apple-system';dc.fillText(unit,x,y+R*0.62+26)}
+function draw(){const P=ENG(),red=P.redline;
+ dc.clearRect(0,0,1072,430);
+ gauge(270,230,170,V.rpm/red,red,'rpm',Math.round(V.rpm),V.knock?'#f87171':'#22d3ee',0.94);
+ gauge(800,230,170,V.v/240,240,'km/h',Math.round(V.v),'#4ade80');
+ // 기어·부스트·상태
+ dc.fillStyle='#fbbf24';dc.font='800 52px ui-monospace';dc.textAlign='center';
+ dc.fillText(V.shift>0?'⇅':V.gear+'단',536,180);
+ dc.fillStyle='#9098a8';dc.font='600 19px -apple-system';
+ dc.fillText(P.induction==='NA'?'자연흡기':('부스트 '+V.boost.toFixed(2)+' bar'),536,225);
+ if(V.state)dc.fillText(V.state,536,250);
+ if(V.knock){dc.fillStyle='#f87171';dc.font='800 24px -apple-system';dc.fillText('⚠ KNOCK',536,290)}
+ dc.fillStyle=V.thr>0?'#4ade80':'#3a4152';dc.fillText('⛽ '+Math.round(V.thr*100)+'%',536,330);
+ // 곡선
+ cc.clearRect(0,0,1072,300);cc.strokeStyle='#262c3a';cc.strokeRect(0,0,1072,300);
+ const X=r=>60+(r-800)/(red-800)*960;
+ cc.font='600 18px ui-monospace';cc.fillStyle='#9098a8';cc.textAlign='left';
+ cc.fillText('토크 N·m (주황) · 출력 kW (청록) · WOT 곡선',60,26);
+ cc.lineWidth=4;
+ cc.strokeStyle='#fb923c';cc.beginPath();
+ CURVE.forEach((c,i)=>{const x=X(c[0]),y=280-c[1]/CVMAX.tq*230;i?cc.lineTo(x,y):cc.moveTo(x,y)});cc.stroke();
+ cc.strokeStyle='#22d3ee';cc.beginPath();
+ CURVE.forEach((c,i)=>{const x=X(c[0]),y=280-c[2]/CVMAX.kw*230;i?cc.lineTo(x,y):cc.moveTo(x,y)});cc.stroke();
+ CURVE.forEach(c=>{if(c[3]){cc.fillStyle='#f87171';cc.fillRect(X(c[0])-2,40,4,10)}});
+ cc.fillStyle='#e3e8f1';cc.beginPath();cc.arc(X(cl(V.rpm,800,red)),280-Math.max(0,driveNow())/CVMAX.tq*230,9,0,7);cc.fill();
+ const mp=CURVE.reduce((a,c)=>c[2]>a[2]?c:a,CURVE[0]);
+ cc.fillStyle='#9098a8';cc.textAlign='right';
+ cc.fillText('MAX '+Math.round(mp[2]*1.341)+'hp @'+Math.round(mp[0]),1052,26)}
+let lastTq=0,lastTqT=0;
+function driveNow(){const t=performance.now();if(t-lastTqT>120){lastTq=driveTorque(ENG(),Math.max(V.rpm,800)).tq;lastTqT=t}return lastTq}
+// ============ 사운드(WebAudio) ============
+let AC=null,osc1,osc2,gain,noiseG;
+function soundOn(){if(AC)return;AC=new (window.AudioContext||window.webkitAudioContext)();
+ osc1=AC.createOscillator();osc1.type='sawtooth';osc2=AC.createOscillator();osc2.type='square';
+ gain=AC.createGain();gain.gain.value=0;const f=AC.createBiquadFilter();f.type='lowpass';f.frequency.value=900;
+ osc1.connect(f);osc2.connect(f);f.connect(gain);gain.connect(AC.destination);osc1.start();osc2.start()}
+function soundStep(){if(!AC)return;const fire=V.rpm/60*(+el.cyl.value)/2;
+ osc1.frequency.setTargetAtTime(fire,AC.currentTime,0.03);
+ osc2.frequency.setTargetAtTime(fire*0.5,AC.currentTime,0.03);
+ gain.gain.setTargetAtTime(0.03+0.10*V.thr,AC.currentTime,0.05)}
+// ============ 입력 ============
+const hold=(id,on,off)=>{const e=document.getElementById(id);
+ ['touchstart','mousedown'].forEach(ev=>e.addEventListener(ev,x=>{x.preventDefault();on()}));
+ ['touchend','touchcancel','mouseup','mouseleave'].forEach(ev=>e.addEventListener(ev,x=>{x.preventDefault();off()}))};
+hold('acc',()=>{V.thr=1;if(AC&&AC.state==='suspended')AC.resume()},()=>V.thr=0);
+hold('brk',()=>V.brk=1,()=>V.brk=0);
+document.getElementById('bSound').onclick=e=>{soundOn();AC.resume();e.target.classList.toggle('on')};
+document.getElementById('bAuto').onclick=e=>{V.auto=!V.auto;e.target.classList.toggle('on')};
+document.getElementById('bUp').onclick=()=>{if(V.gear<6){V.gear++;V.shift=0.3}};
+document.getElementById('bDn').onclick=()=>{if(V.gear>1){V.gear--;V.shift=0.3}};
+[['bore','vBore','mm'],['strk','vStrk','mm'],['cr','vCr',''],['cam','vCam','%'],['boost','vBoost','bar'],['oct','vOct',''],['rl','vRl','rpm']]
+ .forEach(([i,v,u])=>{const f=()=>{el[v].textContent=el[i].value+u;recurve()};el[i].oninput=f;f()});
+el.cyl.onchange=recurve;el.ind.onchange=recurve;el.tsz.onchange=recurve;
+// ============ 루프 ============
+recurve();let tp=performance.now();
+(function loop(){const t=performance.now(),dt=Math.min((t-tp)/1000,0.05);tp=t;
+ step(dt);soundStep();draw();requestAnimationFrame(loop)})();
+</script></body></html>
