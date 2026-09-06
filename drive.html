@@ -64,7 +64,7 @@ function makeRoad(seed){
  while(nx<N-14){
   const[kind,arms0]=KINDS[(rnd()*KINDS.length)|0];
   const arms=arms0.map(a=>a+(rnd()*24-12));               // ±12° 지터
-  isecs.push({s:nx*BL,kind,arms});
+  isecs.push({s:nx*BL,kind,arms,ph:rnd()*2,done:false});  // ph=신호 위상(로터리 제외)
   for(let j=nx-4;j<=nx+4;j++){curv[j]=0;grade[j]*=0.2;bank[j]=0}  // 교차로 근방 평탄·직선화
   nx+=10+((rnd()*14)|0)}                                   // 간격 150~350m
  const st=5,M=N*BL/st, X=new Float64Array(M),Z=new Float64Array(M),TH=new Float64Array(M),Y=new Float64Array(M);
@@ -86,7 +86,11 @@ function makeRoad(seed){
   o=dir*(1.8+3.6*ln)*(1), col=['#c0392b','#dfe4ea','#576574','#f7b731','#2e86de'][ (rnd()*5)|0 ];
   npcs.push({s:60+rnd()*5700,o:dir>0?(1.8+3.6*ln):-(1.8+3.6*ln),dir,v:(9+rnd()*8)*(dir>0?1:1),
    col,br:false,hit:0,spin:0})}
- ROAD={seed,N,BL,curv,grade,bank,X,Z,TH,Y,st,M,lanes,width,builds,trees,npcs,isecs}}
+ ROAD={seed,N,BL,curv,grade,bank,X,Z,TH,Y,st,M,lanes,width,builds,trees,npcs,isecs,
+  rough:0.6+rnd()*0.9}}                                    // 노면 거칠기 배율(시드별)
+function bumpAt(s){return ROAD.rough*(0.018*Math.sin(s*0.9)+0.012*Math.sin(s*2.3+1.7)
+ +0.007*Math.sin(s*5.7+0.5))}                              // 사인 합성 요철(ISO 8608풍 다중 파장)
+function sigRed(ix,t){return ix.kind!=='circle'&&((t/7+ix.ph)|0)%2===1}  // 본선 적신호(7s 주기 교대)
 function rp(s){const R=ROAD,i=cl(s/R.st,0,R.M-2),i0=i|0,f=i-i0;   // 경로 보간
  return{x:R.X[i0]+(R.X[i0+1]-R.X[i0])*f, z:R.Z[i0]+(R.Z[i0+1]-R.Z[i0])*f,
   th:R.TH[i0]+(R.TH[i0+1]-R.TH[i0])*f, y:R.Y[i0]+(R.Y[i0+1]-R.Y[i0])*f}}
@@ -96,7 +100,8 @@ function wpos(s,o){const p=rp(s),bk=ROAD.bank[blk(s)];             // (s,o)->월
 // ============ 차량(도로좌표 물리): s·o·헤딩오차 — 데스크톱 road_step/steering_step 구조 ============
 const CAR={m:1400,CdA:0.66,Crr:0.012,fd:3.7,td:0.63,eff:0.90,idle:900,L:2.7,mu:1.0};
 const V={s:30,o:1.8,he:0,v:0,rpm:900,gear:1,delta:0,thr:0,brk:0,st:0,auto:true,shift:0,
- off:false,crash:0,toast:'',toastT:0,eng:0};
+ off:false,crash:0,toast:'',toastT:0,eng:0,t:0,
+ zf:0,zr:0,vzf:0,vzr:0,roll:0,rollV:0};                    // 현가(전/후 히브)·롤 ODE 상태
 const ENGS=[
  {name:'NA 2.0',cyl:4,bore:86,strk:86,cr:10.5,cam:0.5,octane:95,redline:7200,induction:'NA',boost:1,turbo_size:'Med',gears:6},
  {name:'터보 1.2bar',cyl:4,bore:86,strk:86,cr:9.5,cam:0.5,octane:98,redline:7200,induction:'Turbo',boost:1.2,turbo_size:'Med',gears:6},
@@ -104,6 +109,14 @@ const ENGS=[
 function EP(){return{...ENGS[V.eng],throttle:V.thr*100,afr:12.8}}
 function toast(m){V.toast=m;V.toastT=2.2}
 function step(dt){const P=EP(),red=P.redline,vms=V.v/3.6;
+ V.t+=dt;
+ // ---- 현가: 축별 쿼터카(요철 입력) + 롤 ODE(횡가속) — 세미임플리시트 ----
+ {const K=128,C=17, zrf=bumpAt(V.s+1.35)*(V.off?2.2:1), zrr=bumpAt(V.s-1.35)*(V.off?2.2:1);
+  V.vzf+=(-K*(V.zf-zrf)-C*V.vzf)*dt; V.zf+=V.vzf*dt;       // z''=-K(z-zr)-Cz' (K=k/m, ωn≈11rad/s)
+  V.vzr+=(-K*(V.zr-zrr)-C*V.vzr)*dt; V.zr+=V.vzr*dt;
+  const ay=vms*vms*Math.tan(V.delta)/CAR.L;                 // 바이시클 정상상태 횡가속
+  V.rollV+=((CAR.m*ay*0.55-65000*V.roll-5200*V.rollV)/600)*dt; // Iφ''=m·ay·h−kφφ−cφφ'
+  V.roll+=V.rollV*dt; V.roll=cl(V.roll,-0.16,0.16)}
  // ---- 조향(속도감응 최대각=그립 한계 atan(μgL/v²) 클램프) + 자기복원 ----
  const dmax=cl(Math.atan(CAR.mu*9.81*CAR.L/Math.max(vms*vms,4)),0.07,0.45);
  const tgt=V.st*dmax; V.delta+=(tgt-V.delta)*Math.min(1,dt*7);
@@ -118,6 +131,9 @@ function step(dt){const P=EP(),red=P.redline,vms=V.v/3.6;
  let onIsec=false, near=null;
  for(const ix of ROAD.isecs){const d=Math.abs(ix.s-V.s);
   if(d<XW+40)near=ix; if(d<XW&&Math.abs(V.o)<XW)onIsec=true}
+ if(near&&!near.done&&sigRed(near,V.t)&&V.s>near.s&&V.s<near.s+8&&V.v>8){
+  near.done=true;toast('⚠ 신호위반!')}                      // 적신호 통과 감지(교차로당 1회)
+ if(near&&V.s<near.s-XW)near.done=false;
  if(near&&Math.abs(near.s-V.s)<XW){
   if(near.kind==='circle'){                                // 로터리 중앙섬: 접선 보존 충돌
    const ds=V.s-near.s, R=6.5, dd=Math.hypot(ds,V.o);
@@ -176,9 +192,12 @@ function step(dt){const P=EP(),red=P.redline,vms=V.v/3.6;
   for(const m of ROAD.npcs){if(m!==n&&m.dir===n.dir&&Math.abs(m.o-n.o)<1.8){
    const g=(m.s-n.s)*n.dir;if(g>0&&g<gap)gap=g}}
   if(n.dir===1&&Math.abs(V.o-n.o)<1.8){const g=V.s-n.s;if(g>0&&g<gap)gap=g}
-  const vt=gap<n.v*1.6?Math.max(0,(gap-6)*0.6):(9+(n.s%7));
+  let vt=gap<n.v*1.6?Math.max(0,(gap-6)*0.6):(9+(n.s%7));
+  for(const ix of ROAD.isecs){                              // 적신호: 정지선 앞 감속·정차
+   const dl=(ix.s-ROAD.width/2-2-n.s)*n.dir;
+   if(sigRed(ix,V.t)&&dl>0&&dl<26){vt=Math.min(vt,Math.max(0,(dl-3)*0.5));break}}
   if(vt<n.v-0.3)n.br=true;
-  n.v+=(vt-n.v)*dt*0.8; n.s+=n.dir*n.v*dt;
+  n.v+=(vt-n.v)*dt*(vt<n.v?2.8:0.8); n.s+=n.dir*n.v*dt;   // 감속(제동)은 가속보다 빠르게
   if(n.s<10)n.s+=ROAD.N*ROAD.BL-80; if(n.s>ROAD.N*ROAD.BL-10)n.s=60;
   // 자차 충돌(차선 겹침 AABB)
   const rel=(n.s-V.s), lat=n.o-V.o;
@@ -196,17 +215,20 @@ function draw(){
  const cp=wpos(V.s,V.o), yaw=cp.th+V.he;
  const fx=Math.cos(yaw),fz=Math.sin(yaw),rx=Math.sin(yaw),rz=-Math.cos(yaw);
  const ch=3.1, cb=8.5;                                     // 캠 높이·후방거리
- const cx=cp.x-fx*cb, cyy=cp.y+ch+(V.off?Math.sin(performance.now()*0.05)*0.08*Math.min(V.v/40,1):0), cz=cp.z-fz*cb;
- const pitch=-0.10;
+ const hv=(V.zf+V.zr)*0.5*2.2;                             // 현가 히브(시각 배율)
+ const cx=cp.x-fx*cb, cyy=cp.y+ch+hv+(V.off?Math.sin(performance.now()*0.05)*0.08*Math.min(V.v/40,1):0), cz=cp.z-fz*cb;
+ const pitch=-0.10+(V.zf-V.zr)/2.7*0.6;                    // 현가 피치
  function prj(p){let dx=p.x-cx,dy=p.y-cyy,dz=p.z-cz;
   const zc=dx*fx+dz*fz, xc=dx*rx+dz*rz, yc=dy+zc*pitch;    // 소각 피치 근사
   if(zc<0.8)return null;
   return{x:W/2+xc*F/zc, y:H*0.46-yc*F/zc, z:zc}}
- // 하늘·지면
+ // 월드는 롤 회전 캔버스에(현가 롤 체감) — HUD 전 restore
+ g.save();g.translate(W/2,H*0.45);g.rotate(-V.roll*0.9);g.translate(-W/2,-H*0.45);
+ // 하늘·지면(회전 여유분 확장)
  const sky=g.createLinearGradient(0,0,0,H*0.5);
  sky.addColorStop(0,'#5b9bd0');sky.addColorStop(1,'#aacfe8');
- g.fillStyle=sky;g.fillRect(0,0,W,H*0.5);
- g.fillStyle='#5d8f4e';g.fillRect(0,H*0.42,W,H);
+ g.fillStyle=sky;g.fillRect(-140,-100,W+280,H*0.5+100);
+ g.fillStyle='#5d8f4e';g.fillRect(-140,H*0.42,W+280,H+160);
  // 도로 리본(원->근)
  const AH=280,DS=4,hw=ROAD.width/2;
  let pl=null,pr=null,pc=[];
@@ -241,6 +263,14 @@ function draw(){
      const a=prj({x:c0.x+dx*t,y:c0.y,z:c0.z+dz*t}),b=prj({x:c0.x+dx*(t+4),y:c0.y,z:c0.z+dz*(t+4)});
      if(a&&b){g.strokeStyle='#e8c545';g.lineWidth=cl(70/a.z,0.5,3);
       g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke()}}}}
+  if(ix.kind!=='circle'){                                  // 신호등(우측 기둥·본선 방향 등화)
+   const sp=wpos(ix.s-hw2-1.5,hw2+1.3), pb=prj(sp), pt=prj({x:sp.x,y:sp.y+4.6,z:sp.z});
+   if(pb&&pt){g.strokeStyle='#4a4f58';g.lineWidth=cl(45/pb.z,1,5);
+    g.beginPath();g.moveTo(pb.x,pb.y);g.lineTo(pt.x,pt.y);g.stroke();
+    const r2=cl(120/pt.z,2.5,11);
+    g.fillStyle='#22262e';g.fillRect(pt.x-r2*1.3,pt.y-r2*1.4,r2*2.6,r2*2.8);
+    g.fillStyle=sigRed(ix,V.t)?'#ff453a':'#30d158';
+    g.beginPath();g.arc(pt.x,pt.y,r2,0,7);g.fill()}}
   if(ix.kind==='circle'){                                  // 중앙섬(잔디+연석)
    g.fillStyle='#4d7d42';g.beginPath();let st1=false;
    for(let k=0;k<=16;k++){const a=k/16*2*Math.PI,
@@ -285,6 +315,34 @@ function draw(){
   else{ // 자차(체이스캠)
    box(V.s,V.o,V.he,1.8,4.35,1.35,V.crash>0?'#f87171':'#2f6db3','#1c3a5f',0);
    box(V.s+0.2,V.o,V.he,1.55,2.0,1.75,'#274f7f','#16304f',0)}}
+ g.restore();                                              // 롤 회전 해제(HUD는 수평)
+ // 미니맵(우상단: 경로 리본·교차로 노드·플레이어 — 헤딩 업)
+ {const mw=225,mx0=W-mw-14,my0=78;
+  g.fillStyle='rgba(10,14,20,0.72)';g.fillRect(mx0,my0,mw,mw);
+  g.strokeStyle='#2c4a5c';g.strokeRect(mx0,my0,mw,mw);
+  g.save();g.beginPath();g.rect(mx0,my0,mw,mw);g.clip();
+  const ax=mx0+mw/2, ay2=my0+mw*0.72, sc2=0.5;             // 플레이어 앵커(하단 1/3)
+  const m2=p=>{const dx=p.x-cp.x,dz=p.z-cp.z;
+   return[ax+(dx*rx+dz*rz)*sc2, ay2-(dx*fx+dz*fz)*sc2]};
+  g.strokeStyle='#8b93a2';g.lineWidth=ROAD.width*sc2;g.lineCap='round';g.beginPath();
+  for(let d2=-70,st1=false;d2<=330;d2+=10){const q=m2(rp(cl(V.s+d2,0,ROAD.N*ROAD.BL-1)));
+   st1?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]);st1=true}
+  g.stroke();
+  g.strokeStyle='#e8c545';g.lineWidth=1.4;g.setLineDash([6,6]);g.beginPath();
+  for(let d2=-70,st1=false;d2<=330;d2+=10){const q=m2(rp(cl(V.s+d2,0,ROAD.N*ROAD.BL-1)));
+   st1?g.lineTo(q[0],q[1]):g.moveTo(q[0],q[1]);st1=true}
+  g.stroke();g.setLineDash([]);
+  for(const ix of ROAD.isecs){const d2=ix.s-V.s;if(d2<-70||d2>330)continue;
+   const q=m2(rp(ix.s));
+   g.fillStyle={circle:'#30d158',cross:'#22d3ee',penta:'#e879f9',skew:'#38bdf8'}[ix.kind]||'#fb923c';
+   g.beginPath();g.arc(q[0],q[1],5,0,7);g.fill()}
+  g.fillStyle='#4ade80';g.beginPath();                     // 플레이어 삼각(헤딩오차 반영)
+  const ca2=Math.cos(-V.he),sa2=Math.sin(-V.he);
+  for(const[dx2,dy2]of[[0,-11],[-7,8],[7,8]])
+   g.lineTo(ax+dx2*ca2-dy2*sa2, ay2+dx2*sa2+dy2*ca2);
+  g.closePath();g.fill();
+  g.fillStyle='#9adcf3';g.font='600 15px ui-monospace';g.textAlign='left';
+  g.fillText('NAV',mx0+8,my0+20);g.restore()}
  // HUD
  g.fillStyle='rgba(10,12,16,0.55)';g.fillRect(0,0,W,64);
  g.fillStyle='#fff';g.font='800 44px ui-monospace';g.textAlign='left';
