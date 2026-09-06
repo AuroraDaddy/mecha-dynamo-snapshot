@@ -57,6 +57,16 @@ function makeRoad(seed){
  for(let k=0;k<4;k++)for(let i=1;i<N-1;i++){               // 평활
   curv[i]=(curv[i-1]+2*curv[i]+curv[i+1])/4;grade[i]=(grade[i-1]+2*grade[i]+grade[i+1])/4;
   bank[i]=(bank[i-1]+2*bank[i]+bank[i+1])/4}
+ // ---- 교차로(데스크톱 intersection 이식): 종류·각도 팔, 최소 간격, 근방 평탄화 ----
+ const isecs=[]; let nx=14+((rnd()*10)|0);
+ const KINDS=[['cross',[90,-90]],['T',[rnd()<0.5?90:-90]],['Y',[55]],
+              ['skew',[72,-108]],['penta',[59,123,-90]],['circle',[90,-90]]];
+ while(nx<N-14){
+  const[kind,arms0]=KINDS[(rnd()*KINDS.length)|0];
+  const arms=arms0.map(a=>a+(rnd()*24-12));               // ±12° 지터
+  isecs.push({s:nx*BL,kind,arms});
+  for(let j=nx-4;j<=nx+4;j++){curv[j]=0;grade[j]*=0.2;bank[j]=0}  // 교차로 근방 평탄·직선화
+  nx+=10+((rnd()*14)|0)}                                   // 간격 150~350m
  const st=5,M=N*BL/st, X=new Float64Array(M),Z=new Float64Array(M),TH=new Float64Array(M),Y=new Float64Array(M);
  let x=0,z=0,th=0,y=0;                                     // 월드 경로 적분(중심선)
  for(let i=0;i<M;i++){X[i]=x;Z[i]=z;TH[i]=th;Y[i]=y;
@@ -64,7 +74,9 @@ function makeRoad(seed){
   th+=curv[b]*st;x+=Math.cos(th)*st;z+=Math.sin(th)*st;y+=grade[b]*st}
  const lanes=2*(1+((rnd()*2)|0)), width=lanes*3.6;         // 2/4차선(양방향)
  const builds=[],trees=[];
+ const nearIsec=s=>isecs.some(ix=>Math.abs(ix.s-s)<70);    // 교차로 근방=건물·나무 억제(팔 통로)
  for(let i=2;i<N-2;i++)for(const sd of [1,-1]){
+  if(nearIsec(i*BL))continue;
   const r=rnd();
   if(r<0.34)builds.push({s:i*BL+7.5,o:sd*(width/2+7+rnd()*6),w:8+rnd()*8,d:9+rnd()*5,
    h:6+rnd()*16,c:0.35+rnd()*0.3});
@@ -74,7 +86,7 @@ function makeRoad(seed){
   o=dir*(1.8+3.6*ln)*(1), col=['#c0392b','#dfe4ea','#576574','#f7b731','#2e86de'][ (rnd()*5)|0 ];
   npcs.push({s:60+rnd()*5700,o:dir>0?(1.8+3.6*ln):-(1.8+3.6*ln),dir,v:(9+rnd()*8)*(dir>0?1:1),
    col,br:false,hit:0,spin:0})}
- ROAD={seed,N,BL,curv,grade,bank,X,Z,TH,Y,st,M,lanes,width,builds,trees,npcs}}
+ ROAD={seed,N,BL,curv,grade,bank,X,Z,TH,Y,st,M,lanes,width,builds,trees,npcs,isecs}}
 function rp(s){const R=ROAD,i=cl(s/R.st,0,R.M-2),i0=i|0,f=i-i0;   // 경로 보간
  return{x:R.X[i0]+(R.X[i0+1]-R.X[i0])*f, z:R.Z[i0]+(R.Z[i0+1]-R.Z[i0])*f,
   th:R.TH[i0]+(R.TH[i0+1]-R.TH[i0])*f, y:R.Y[i0]+(R.Y[i0+1]-R.Y[i0])*f}}
@@ -101,7 +113,37 @@ function step(dt){const P=EP(),red=P.redline,vms=V.v/3.6;
  V.he=((V.he+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
  V.o+=vms*Math.sin(V.he)*dt; V.s+=vms*Math.cos(V.he)*dt;
  if(V.s>ROAD.N*ROAD.BL-60)V.s=30;                          // 순환
- V.off=Math.abs(V.o)>ROAD.width/2;
+ // ---- 교차로 진출(데스크톱 _intersection_turn 이식: 리본 재기준화) ----
+ const hw=ROAD.width/2, XW=hw+7.5;
+ let onIsec=false, near=null;
+ for(const ix of ROAD.isecs){const d=Math.abs(ix.s-V.s);
+  if(d<XW+40)near=ix; if(d<XW&&Math.abs(V.o)<XW)onIsec=true}
+ if(near&&Math.abs(near.s-V.s)<XW){
+  if(near.kind==='circle'){                                // 로터리 중앙섬: 접선 보존 충돌
+   const ds=V.s-near.s, R=6.5, dd=Math.hypot(ds,V.o);
+   if(dd<R+1.2){const nx2=ds/Math.max(dd,0.01),nz=V.o/Math.max(dd,0.01);
+    V.s=near.s+nx2*(R+1.2);V.o=nz*(R+1.2);
+    const dot=Math.cos(V.he)*nx2+Math.sin(V.he)*nz;
+    if(dot<0){                                              // 안쪽 진행: 연석 수직항력=반경 성분 흡수
+     let tx=Math.cos(V.he)-dot*nx2, tz=Math.sin(V.he)-dot*nz, tm=Math.hypot(tx,tz);
+     if(tm<0.2){tx=-nz;tz=nx2;if(V.st<0){tx=nz;tz=-nx2}tm=0.6}  // 정면: 조향 쪽 접선 선택
+     V.he=Math.atan2(tz,tx);
+     V.v*=Math.max(0.55,tm)}                                // 접선 운동량 보존(순환 가능)
+    if(V.toastT<=0)toast('로터리 — 섬을 돌아 진출')}}
+  for(const A of near.arms){                                // 팔 정렬+진입 → 커밋(재기준화)
+   const ar=A*Math.PI/180,
+    adiff=Math.abs(((V.he-ar+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI);
+   const ds=V.s-near.s,
+    prog=ds*Math.cos(ar)+V.o*Math.sin(ar),                  // 팔 프레임 진행
+    lat=-ds*Math.sin(ar)+V.o*Math.cos(ar);
+   if(adiff<0.56&&prog>hw*0.5){                             // ±32° 정렬 + 팔 안쪽 진입
+    const nseed=((ROAD.seed*31+((near.s/15)|0)*7+((A+360)|0))%9973)+1;
+    makeRoad(nseed);                                        // 연결 도로(파생 시드) 생성
+    V.s=30+prog; V.o=cl(lat,-ROAD.width/2+0.5,ROAD.width/2-0.5);
+    V.he-=ar; V.he=((V.he+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
+    toast((A>0?'우':'좌')+'회전 — 연결 도로로 진입 (seed '+nseed+')');
+    return}}}
+ V.off=Math.abs(V.o)>ROAD.width/2&&!onIsec;                 // 교차로 박스=아스팔트(면제)
  // ---- 자동변속 ----
  if(V.shift>0)V.shift-=dt;
  if(V.auto&&V.shift<=0){
@@ -185,6 +227,27 @@ function draw(){
    g.beginPath();g.moveTo(pl.x,pl.y);g.lineTo(pl2.x,pl2.y);g.stroke();
    g.beginPath();g.moveTo(pr.x,pr.y);g.lineTo(pr2.x,pr2.y);g.stroke()}
   var pl2=L,pr2=R;pl=L;pr=R}
+ // ---- 교차로: 팔 아스팔트 + 중앙선 + 로터리 섬 ----
+ for(const ix of ROAD.isecs){const rel=ix.s-V.s;if(rel<-40||rel>AH)continue;
+  const c0=rp(ix.s), thi=c0.th, hw2=ROAD.width/2;
+  for(const A of ix.arms){const ar=A*Math.PI/180, ta=thi-ar,
+   dx=Math.cos(ta),dz=Math.sin(ta),rx2=Math.sin(ta),rz2=-Math.cos(ta);
+   const q=[[0,-hw2],[0,hw2],[64,hw2],[64,-hw2]].map(([t,o2])=>prj({
+    x:c0.x+dx*t+rx2*o2, y:c0.y, z:c0.z+dz*t+rz2*o2}));
+   if(q.every(Boolean)){g.fillStyle='#3d4148';g.beginPath();
+    g.moveTo(q[0].x,q[0].y);for(let k=1;k<4;k++)g.lineTo(q[k].x,q[k].y);
+    g.closePath();g.fill();
+    for(let t=hw2+4;t<60;t+=8){                            // 팔 중앙선 파선
+     const a=prj({x:c0.x+dx*t,y:c0.y,z:c0.z+dz*t}),b=prj({x:c0.x+dx*(t+4),y:c0.y,z:c0.z+dz*(t+4)});
+     if(a&&b){g.strokeStyle='#e8c545';g.lineWidth=cl(70/a.z,0.5,3);
+      g.beginPath();g.moveTo(a.x,a.y);g.lineTo(b.x,b.y);g.stroke()}}}}
+  if(ix.kind==='circle'){                                  // 중앙섬(잔디+연석)
+   g.fillStyle='#4d7d42';g.beginPath();let st1=false;
+   for(let k=0;k<=16;k++){const a=k/16*2*Math.PI,
+    p=prj({x:c0.x+Math.cos(a)*6.5*Math.cos(thi)-Math.sin(a)*6.5*Math.sin(thi),
+     y:c0.y+0.25, z:c0.z+Math.cos(a)*6.5*Math.sin(thi)+Math.sin(a)*6.5*Math.cos(thi)});
+    if(!p){st1=false;continue} st1?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y);st1=true}
+   g.closePath();g.fill();g.strokeStyle='#c9cdd4';g.lineWidth=2;g.stroke()}}
  // 오브젝트 painter(원->근)
  const obj=[];
  for(const b of ROAD.builds){const rel=b.s-V.s;if(rel<-20||rel>AH)continue;obj.push({z:rel,t:'b',b})}
@@ -235,6 +298,15 @@ function draw(){
  if(V.knock){g.fillStyle='#f87171';g.font='800 26px -apple-system';g.fillText('⚠KNOCK',930,44)}
  g.textAlign='right';g.fillStyle='#cfd6e2';g.font='600 20px ui-monospace';
  g.fillText('seed '+ROAD.seed+' · '+ROAD.lanes+'차선 · s='+Math.round(V.s)+'m',W-16,H-14);
+ // nav 힌트: 다음 교차로 + 진출 방향(데스크톱 이식: 좌=arm<0/우=arm>0)
+ let nxt=null;for(const ix of ROAD.isecs){const d2=ix.s-V.s;
+  if(d2>5&&d2<420&&(!nxt||d2<nxt.d))nxt={d:d2,ix}}
+ if(nxt){const ix=nxt.ix,
+  lab=ix.kind==='circle'?'로터리':((2+ix.arms.length)+'거리'),
+  dir=ix.kind==='circle'?'어디로든':
+   ['직',...(ix.arms.some(a=>a<-2)?['좌']:[]),...(ix.arms.some(a=>a>2)?['우']:[])].join('·');
+ g.textAlign='left';g.fillStyle='#9adcf3';g.font='700 24px -apple-system';
+ g.fillText('다음 '+lab+' '+Math.round(nxt.d)+'m · 진출:'+dir,20,H-14)}
  if(V.off){g.fillStyle='#fbbf24';g.font='800 30px -apple-system';g.textAlign='center';
   g.fillText('오프로드! (μ 0.55)',W/2,110)}
  if(V.toastT>0){g.fillStyle='#f87171';g.font='800 34px -apple-system';g.textAlign='center';
